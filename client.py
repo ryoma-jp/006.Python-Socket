@@ -98,6 +98,9 @@ if __name__ == '__main__':
 
 #		print(data.shape)	# for Debug
 		cv2.imwrite('frame.png', data.reshape(edge_img_hw))
+
+		# --- サーバへ切断コマンドを送信 ---
+		s.send(b'disconnect')
 	
 	cap.release()
 	cv2.destroyAllWindows()

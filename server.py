@@ -58,10 +58,11 @@ if __name__ == '__main__':
 		s.bind((args.server_ip, args.server_port))
 		s.listen(1)
 		
-		while (True):
-			# --- クライアントからの接続を検出 ---
-			conn, addr = s.accept()
+		# --- クライアントからの接続を検出 ---
+		conn, addr = s.accept()
 			
+		flg_disconnect = False
+		while (True):
 			# --- データ受信 ---
 			#   バイトデータで受信されるのでndarrayに変換する
 			data = None
@@ -72,11 +73,20 @@ if __name__ == '__main__':
 				else:
 					data = np.fromstring(data_tmp, dtype=np.uint8)
 				
+				if (data_tmp[0:10] == b'disconnect'):
+					print('[INFO] disconnected')
+					flg_disconnect = True
+					break
+
 				if (len(data) >= CAMERA_DATA_SIZE):
 					break
 				else:
 #					print(len(data))	# for Debug
 					time.sleep(0.001)	# wait 1ms
+
+			# --- 切断要求受信時 ---
+			if (flg_disconnect):
+				break
 			
 			# --- 受信したデータを(Height, Width, Channel)にReshape ---
 #			print(data)			# for Debug
@@ -91,7 +101,4 @@ if __name__ == '__main__':
 			
 			# --- エッジ検出した画像を送信 ---
 			conn.send(edges.tostring())
-			
-			break
-
 
