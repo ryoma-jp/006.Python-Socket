@@ -35,7 +35,8 @@ def ArgParser():
 	# --- 引数を追加 ---
 	parser.add_argument('--server_ip', dest='server_ip', type=str, help='接続先のサーバのIPアドレス', required=True)
 	parser.add_argument('--server_port', dest='server_port', type=int, help='接続先のサーバのPort番号', required=True)
-	parser.add_argument('--dbg_camera_monitor', dest='dbg_camera_monitor', action='store_true', help='', required=False)
+	parser.add_argument('--streaming', dest='flg_streaming', action='store_true', help='カメラ映像を連続で送信(エッジ画像受信と同期しながらの出来高処理)', required=False)
+	parser.add_argument('--dbg_camera_monitor', dest='dbg_camera_monitor', action='store_true', help='カメラ画像入力動作確認のためのデバッグオプション', required=False)
 	
 	args = parser.parse_args()
 	
@@ -75,32 +76,68 @@ if __name__ == '__main__':
 	with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
 		s.connect((args.server_ip, args.server_port))
 	
-		# --- サーバへ画像を送信 ---
-		s.send(frame.tostring())
+		if (args.flg_streaming):
+			while (True):
+				# --- カメラ映像を取得 ---
+				ret, frame = cap.read()
+				cv2.imshow('camera', frame)
+
+				key = cv2.waitKey(1) & 0xFF
+				if (key == ord('q')):
+					s.send(b'disconnect')
+					break
+
+				# --- サーバへ画像を送信 ---
+				s.send(frame.tostring())
 	
-		# --- エッジ検出画像を受信 ---
-		#   バイトデータで受信するので，ndarrayへ変換
-		#   エッジ画像はグレースケールで帰ってくるので，バッファサイズはframe.shape[0] * frame.shape[1]
-		data = None
-		edge_img_hw = frame.shape[0:2]
-		edge_img_data_size = np.prod(edge_img_hw)
-		while (True):
-			data_tmp = s.recv(edge_img_data_size)
-			if (data is not None):
-				data = np.hstack((data, np.fromstring(data_tmp, dtype=np.uint8)))
-			else:
-				data = np.fromstring(data_tmp, dtype=np.uint8)
+				# --- エッジ検出画像を受信 ---
+				#   バイトデータで受信するので，ndarrayへ変換
+				#   エッジ画像はグレースケールで帰ってくるので，バッファサイズはframe.shape[0] * frame.shape[1]
+				data = None
+				edge_img_hw = frame.shape[0:2]
+				edge_img_data_size = np.prod(edge_img_hw)
+				while (True):
+					data_tmp = s.recv(edge_img_data_size)
+					if (data is not None):
+						data = np.hstack((data, np.fromstring(data_tmp, dtype=np.uint8)))
+					else:
+						data = np.fromstring(data_tmp, dtype=np.uint8)
 
-			if (len(data) >= edge_img_data_size):
-				break
-			else:
-				time.sleep(0.001)	# 1ms wait
+					if (len(data) >= edge_img_data_size):
+						break
+					else:
+						time.sleep(0.001)	# 1ms wait
 
-#		print(data.shape)	# for Debug
-		cv2.imwrite('frame.png', data.reshape(edge_img_hw))
+#				print(data.shape)	# for Debug
+#				cv2.imwrite('frame.png', data.reshape(edge_img_hw))
+				cv2.imshow('edges', data.reshape(edge_img_hw))
+		else:
+			# --- サーバへ画像を送信 ---
+			s.send(frame.tostring())
+	
+			# --- エッジ検出画像を受信 ---
+			#   バイトデータで受信するので，ndarrayへ変換
+			#   エッジ画像はグレースケールで帰ってくるので，バッファサイズはframe.shape[0] * frame.shape[1]
+			data = None
+			edge_img_hw = frame.shape[0:2]
+			edge_img_data_size = np.prod(edge_img_hw)
+			while (True):
+				data_tmp = s.recv(edge_img_data_size)
+				if (data is not None):
+					data = np.hstack((data, np.fromstring(data_tmp, dtype=np.uint8)))
+				else:
+					data = np.fromstring(data_tmp, dtype=np.uint8)
 
-		# --- サーバへ切断コマンドを送信 ---
-		s.send(b'disconnect')
+				if (len(data) >= edge_img_data_size):
+					break
+				else:
+					time.sleep(0.001)	# 1ms wait
+
+#			print(data.shape)	# for Debug
+			cv2.imwrite('frame.png', data.reshape(edge_img_hw))
+
+			# --- サーバへ切断コマンドを送信 ---
+			s.send(b'disconnect')
 	
 	cap.release()
 	cv2.destroyAllWindows()
